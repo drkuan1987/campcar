@@ -1,0 +1,37 @@
+{
+  "expo": {
+    "name": "山野泊车",
+    "slug": "campcar",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.drkuan1987.campcar",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "选择照片分享露营见闻、路线和营地。"
+      }
+    },
+    "android": {
+      "package": "com.drkuan1987.campcar",
+      "adaptiveIcon": {
+        "backgroundColor": "#173F33",
+        "foregroundImage": "./assets/icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "选择照片分享露营见闻、路线和营地。",
+          "cameraPermission": "拍摄露营照片。"
+        }
+      ]
+    ]
+  }
+}
