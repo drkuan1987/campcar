@@ -186,7 +186,7 @@ export function MomentEditor({ onSave, onClose }: { onSave: (moment: Moment) => 
     <PhotoPicker photos={photos} onChange={setPhotos} multiple />
     <Field label="说点什么" value={caption} onChangeText={setCaption} placeholder="今天的风景，想分享给谁？" multiline />
     <Field label="地点" value={location} onChangeText={setLocation} placeholder="例如：云南 · 洱海" />
-    <View style={styles.tip}><Icon name="information-circle-outline" size={18} color={palette.forest} /><Text style={styles.tipText}>当前版本内容保存在本机；可通过系统分享发送给朋友。</Text></View>
+    <View style={styles.tip}><Icon name="information-circle-outline" size={18} color={palette.forest} /><Text style={styles.tipText}>内容先保存在本机；登录云端账号后会尝试公开发布。</Text></View>
   </ComposerShell>;
 }
 

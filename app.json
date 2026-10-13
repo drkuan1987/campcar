@@ -31,7 +31,8 @@
           "photosPermission": "选择照片分享露营见闻、路线和营地。",
           "cameraPermission": "拍摄露营照片。"
         }
-      ]
+      ],
+      "expo-secure-store"
     ]
   }
 }

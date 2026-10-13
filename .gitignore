@@ -20,8 +20,11 @@ expo-env.d.ts
 *.pem
 
 # local configuration and logs
+.env
 .env*.local
 npm-debug.*
 yarn-debug.*
 yarn-error.*
 .DS_Store
+server/.env
+server/uploads/

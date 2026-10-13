@@ -13,6 +13,7 @@ export type Stop = {
 
 export type Roadbook = {
   id: string;
+  ownerId?: string;
   title: string;
   region: string;
   summary: string;
@@ -26,6 +27,7 @@ export type Roadbook = {
 
 export type Campsite = {
   id: string;
+  ownerId?: string;
   name: string;
   region: string;
   address: string;
@@ -44,6 +46,7 @@ export type Campsite = {
 
 export type Moment = {
   id: string;
+  ownerId?: string;
   caption: string;
   location: string;
   photos: Photo[];
