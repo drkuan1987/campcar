@@ -19,3 +19,7 @@ CREATE TABLE IF NOT EXISTS entries (
 
 CREATE INDEX IF NOT EXISTS entries_feed_idx ON entries (kind, created_at DESC);
 CREATE INDEX IF NOT EXISTS entries_owner_idx ON entries (owner_id, kind, created_at DESC);
+CREATE INDEX IF NOT EXISTS entries_campsite_coordinates_idx ON entries (
+  ((payload->>'latitude')::double precision),
+  ((payload->>'longitude')::double precision)
+) WHERE kind = 'campsites' AND payload ? 'latitude' AND payload ? 'longitude';

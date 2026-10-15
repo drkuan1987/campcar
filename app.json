@@ -10,7 +10,8 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.drkuan1987.campcar",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "选择照片分享露营见闻、路线和营地。"
+        "NSPhotoLibraryUsageDescription": "选择照片分享露营见闻、路线和营地。",
+        "NSLocationWhenInUseUsageDescription": "用于展示并按距离排序您附近的露营营地。"
       }
     },
     "android": {
@@ -32,7 +33,13 @@
           "cameraPermission": "拍摄露营照片。"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "用于展示并按距离排序您附近的露营营地。"
+        }
+      ]
     ]
   }
 }

@@ -1,6 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
+import * as Location from 'expo-location';
 import { Alert, Pressable, ScrollView, Share, StyleSheet, Text, TextInput, View } from 'react-native';
+import { navigateTo } from './actions';
+import { cloudEnabled, fetchNearbyCamps } from './cloud';
 import { AppData, Campsite, Moment, Roadbook } from './data';
+import { Coordinates, formatDistance, NearbyCamp, nearbyCamps } from './nearby';
 import { Eyebrow, GradientCover, Icon, ImageTile, palette, Pill, RoundButton, SectionTitle } from './ui';
 
 export type Tab = 'home' | 'routes' | 'create' | 'camps' | 'mine';
@@ -13,8 +17,8 @@ export function RoadCard({ item, onPress }: { item: Roadbook; onPress: () => voi
   return <Pressable onPress={onPress} style={{ marginBottom: 14 }}><ImageTile uri={item.cover} height={187}><GradientCover><View style={s.imageContent}><View style={s.glassTag}><Icon name="navigate-outline" size={13} color={palette.white} /><Text style={s.glassText}>{item.region}</Text></View><View><Text style={s.imageTitle}>{item.title}</Text><Text style={s.imageMeta}>{item.days} 天行程   ·   {item.distanceKm} km   ·   {item.stops.length} 站</Text></View></View></GradientCover></ImageTile></Pressable>;
 }
 
-export function CampCard({ item, onPress }: { item: Campsite; onPress: () => void }) {
-  return <Pressable onPress={onPress} style={s.campCard}><View style={{ width: 112 }}><ImageTile uri={item.photo} height={113} radius={14} /></View><View style={s.campBody}><Text numberOfLines={1} style={s.campName}>{item.name}</Text><Text style={s.muted}>{item.region}</Text><View style={s.campFacilities}><Text style={[s.facilityText, !item.water && s.unavailable]}>◉ {item.water ? '可接水' : '无补水'}</Text><Text style={[s.facilityText, !item.power && s.unavailable]}>ϟ {item.power ? '可接电' : '无接电'}</Text></View><Text style={s.price}>¥{item.pricePerNight}<Text style={s.priceSuffix}> /晚</Text></Text></View></Pressable>;
+export function CampCard({ item, onPress, distanceKm }: { item: Campsite; onPress: () => void; distanceKm?: number }) {
+  return <Pressable onPress={onPress} style={s.campCard}><View style={{ width: 112 }}><ImageTile uri={item.photo} height={113} radius={14} /></View><View style={s.campBody}><Text numberOfLines={1} style={s.campName}>{item.name}</Text><Text style={s.muted}>{item.region}</Text>{distanceKm !== undefined && <Text style={s.distance}>距您约 {formatDistance(distanceKm)} · 直线距离</Text>}<View style={s.campFacilities}><Text style={[s.facilityText, !item.water && s.unavailable]}>◉ {item.water ? '可接水' : '无补水'}</Text><Text style={[s.facilityText, !item.power && s.unavailable]}>ϟ {item.power ? '可接电' : '无接电'}</Text></View><Text style={s.price}>¥{item.pricePerNight}<Text style={s.priceSuffix}> /晚</Text></Text></View></Pressable>;
 }
 
 export function MomentCard({ item }: { item: Moment }) {
@@ -44,8 +48,80 @@ export function CampsScreen({ data, openCamp, create }: { data: AppData; openCam
   const [query, setQuery] = useState('');
   const [water, setWater] = useState(false);
   const [power, setPower] = useState(false);
-  const results = useMemo(() => data.campsites.filter((item) => `${item.name} ${item.region} ${item.address}`.toLowerCase().includes(query.trim().toLowerCase()) && (!water || item.water) && (!power || item.power)), [data.campsites, query, water, power]);
-  return <ScrollView contentContainerStyle={s.page} showsVerticalScrollIndicator={false}><Header label="SLEEP UNDER THE STARS" title="发现好营地" action="add" onAction={create} /><Text style={s.subtitle}>普通露营或房车过夜，设施和费用一眼看清。</Text><Search value={query} setValue={setQuery} hint="搜索营地、城市或地址" /><View style={s.filterRow}><Pill label="可接水" icon="water-outline" active={water} onPress={() => setWater(!water)} /><Pill label="可接电" icon="flash-outline" active={power} onPress={() => setPower(!power)} /></View><View style={s.notice}><Icon name="information-circle-outline" size={17} color={palette.forest} /><Text style={s.noticeText}>示例营地与价格仅用于体验，出行前请向营地核实。</Text></View><Text style={s.listTitle}>{results.length} 处营地</Text>{results.map((item) => <CampCard key={item.id} item={item} onPress={() => openCamp(item)} />)}{!results.length && <Empty>没有符合条件的营地，你也可以收录一个。</Empty>}</ScrollView>;
+  const [nearby, setNearby] = useState(false);
+  const [position, setPosition] = useState<Coordinates | null>(null);
+  const [radiusKm, setRadiusKm] = useState(50);
+  const [locating, setLocating] = useState(false);
+  const [locationError, setLocationError] = useState('');
+  const [onlineNearby, setOnlineNearby] = useState<NearbyCamp[]>([]);
+  const [onlineStatus, setOnlineStatus] = useState<'idle' | 'loading' | 'error'>('idle');
+
+  useEffect(() => {
+    if (!nearby || !position || !cloudEnabled) return;
+    let active = true;
+    setOnlineNearby([]);
+    setOnlineStatus('loading');
+    fetchNearbyCamps(position, radiusKm).then((items) => {
+      if (active) { setOnlineNearby(items); setOnlineStatus('idle'); }
+    }).catch(() => { if (active) setOnlineStatus('error'); });
+    return () => { active = false; };
+  }, [nearby, position, radiusKm]);
+
+  async function locate() {
+    if (locating) return;
+    setLocating(true);
+    setLocationError('');
+    try {
+      const permission = await Location.requestForegroundPermissionsAsync();
+      if (!permission.granted) {
+        setLocationError('未获得位置权限。请在系统设置中允许定位，或继续按地区搜索营地。');
+        return;
+      }
+      const current = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      setPosition({ latitude: current.coords.latitude, longitude: current.coords.longitude });
+      setNearby(true);
+    } catch {
+      setLocationError('暂时无法获取当前位置。请检查设备定位或网络，也可以继续按地区搜索。');
+    } finally {
+      setLocating(false);
+    }
+  }
+
+  const results = useMemo(() => {
+    const candidates = nearby && position
+      ? (() => {
+        const local = nearbyCamps(data.campsites, position, radiusKm);
+        const remoteIds = new Set(onlineNearby.map(({ item }) => item.id));
+        return [...local.filter(({ item }) => !remoteIds.has(item.id)), ...onlineNearby].sort((a, b) => a.distanceKm - b.distanceKm);
+      })()
+      : data.campsites.map((item) => ({ item, distanceKm: undefined }));
+    return candidates.filter(({ item }) => `${item.name} ${item.region} ${item.address}`.toLowerCase().includes(query.trim().toLowerCase()) && (!water || item.water) && (!power || item.power));
+  }, [data.campsites, nearby, position, radiusKm, onlineNearby, query, water, power]);
+
+  return <ScrollView contentContainerStyle={s.page} showsVerticalScrollIndicator={false}>
+    <Header label="SLEEP UNDER THE STARS" title="发现好营地" action="add" onAction={create} />
+    <Text style={s.subtitle}>普通露营或房车过夜，设施和费用一眼看清。</Text>
+    <Search value={query} setValue={setQuery} hint="搜索营地、城市或地址" />
+    <View style={s.filterRow}>
+      <Pill label={locating ? '定位中…' : '附近营地'} icon="locate-outline" active={nearby} onPress={() => { if (nearby) setNearby(false); else void locate(); }} />
+      <Pill label="可接水" icon="water-outline" active={water} onPress={() => setWater(!water)} />
+      <Pill label="可接电" icon="flash-outline" active={power} onPress={() => setPower(!power)} />
+    </View>
+    {locationError ? <Text style={s.locationHint}>{locationError}</Text> : null}
+    {nearby && onlineStatus === 'loading' && <Text style={s.nearbyStatus}>正在查找云端附近营地…</Text>}
+    {nearby && onlineStatus === 'error' && <Text style={s.locationHint}>云端附近查询暂不可用，当前展示本机及已加载的营地。</Text>}
+    {nearby && <View style={s.nearbyControls}>
+      <Text style={s.nearbyLabel}>距离范围</Text>
+      <Pill label="50 公里" active={radiusKm === 50} onPress={() => setRadiusKm(50)} />
+      <Pill label="200 公里" active={radiusKm === 200} onPress={() => setRadiusKm(200)} />
+      <Pressable onPress={() => { void locate(); }}><Text style={s.relocate}>重新定位</Text></Pressable>
+    </View>}
+    <View style={s.notice}><Icon name="information-circle-outline" size={17} color={palette.forest} /><Text style={s.noticeText}>示例营地与价格仅用于体验，出行前请向营地核实。附近营地仅包含已收录准确坐标的真实营地，距离为直线距离。</Text></View>
+    <Text style={s.listTitle}>{nearby ? `附近 ${radiusKm} 公里 · ` : ''}{results.length} 处营地</Text>
+    {results.map(({ item, distanceKm }) => <CampCard key={item.id} item={item} distanceKm={distanceKm} onPress={() => openCamp(item)} />)}
+    {!results.length && <Empty>{nearby ? '该范围内暂无已收录且有坐标的营地，请扩大范围或收录营地。' : '没有符合条件的营地，你也可以收录一个。'}</Empty>}
+    {nearby && <Pressable onPress={() => { void navigateTo({ name: '露营地' }).catch(() => setLocationError('无法打开地图，请检查网络或设备设置。')); }} style={s.mapSearch}><Icon name="map-outline" size={17} color={palette.forest} /><Text style={s.mapSearchText}>在高德地图继续搜索露营地</Text></Pressable>}
+  </ScrollView>;
 }
 
 export function CreateScreen({ onSelect }: { onSelect: (kind: 'roadbook' | 'camp' | 'moment') => void }) {
@@ -91,6 +167,7 @@ const s = StyleSheet.create({
   campCard: { backgroundColor: palette.white, borderRadius: 19, padding: 10, flexDirection: 'row', gap: 12, marginBottom: 12 },
   campBody: { flex: 1, justifyContent: 'center', minWidth: 0 },
   campName: { color: palette.ink, fontSize: 14, fontWeight: '800', marginBottom: 4 },
+  distance: { color: palette.forest, fontSize: 11, fontWeight: '700', marginTop: 4 },
   muted: { color: palette.muted, fontSize: 11 },
   campFacilities: { flexDirection: 'row', gap: 9, marginTop: 9 },
   facilityText: { color: palette.forest, fontSize: 10, fontWeight: '700' },
@@ -106,6 +183,13 @@ const s = StyleSheet.create({
   search: { height: 49, backgroundColor: palette.white, borderRadius: 15, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 },
   searchInput: { flex: 1, fontSize: 13, color: palette.ink, paddingVertical: 8 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 19 },
+  locationHint: { color: '#9B5C45', fontSize: 12, lineHeight: 18, marginTop: -8, marginBottom: 16 },
+  nearbyStatus: { color: palette.muted, fontSize: 11, marginTop: -8, marginBottom: 15 },
+  nearbyControls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginTop: -7, marginBottom: 15 },
+  nearbyLabel: { color: palette.muted, fontSize: 11 },
+  relocate: { color: palette.forest, fontSize: 11, fontWeight: '700', padding: 8 },
+  mapSearch: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, padding: 14, marginTop: 10 },
+  mapSearchText: { color: palette.forest, fontSize: 12, fontWeight: '700' },
   listTitle: { color: palette.ink, fontSize: 16, fontWeight: '800', marginBottom: 14 },
   empty: { backgroundColor: palette.white, borderRadius: 18, padding: 30, minHeight: 130, alignItems: 'center', justifyContent: 'center', gap: 10 },
   notice: { backgroundColor: palette.sage, padding: 11, borderRadius: 12, flexDirection: 'row', gap: 7, marginBottom: 18 },

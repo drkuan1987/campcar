@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as SecureStore from 'expo-secure-store';
 import { Platform } from 'react-native';
 import { AppData, Campsite, Moment, Roadbook } from './data';
+import type { Coordinates, NearbyCamp } from './nearby';
 
 const baseUrl = process.env.EXPO_PUBLIC_API_URL?.replace(/\/$/, '') || '';
 const tokenKey = 'campcar:cloud-token:v1';
@@ -67,6 +68,14 @@ export async function fetchPublicData(): Promise<Pick<AppData, 'roadbooks' | 'ca
     request<{ items: Moment[] }>('/api/moments'),
   ]);
   return { roadbooks: roads.items, campsites: camps.items, moments: moments.items };
+}
+
+export async function fetchNearbyCamps(position: Coordinates, radiusKm: number): Promise<NearbyCamp[]> {
+  const result = await request<{ items: NearbyCamp[] }>('/api/campsites/nearby', {
+    method: 'POST',
+    body: JSON.stringify({ ...position, radiusKm }),
+  });
+  return result.items;
 }
 
 async function uploadImage(uri: string, token: string): Promise<string> {

@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { ApiError, authenticate, ensureUser, exchangeWechatCode, issueToken } from './auth.js';
 import { config } from './config.js';
 import { db } from './db.js';
+import { distanceKm } from './geo.js';
 import { storeImage } from './storage.js';
 
 const id = z.string().min(1).max(100).regex(/^[a-zA-Z0-9_-]+$/);
@@ -64,6 +65,34 @@ app.post('/api/media', upload.single('photo'), async (req, res) => {
   const userId = await authenticate(req);
   if (!req.file) throw new ApiError(400, '请选择图片');
   res.status(201).json({ url: await storeImage(userId, req.file.buffer) });
+});
+
+app.post('/api/campsites/nearby', async (req, res) => {
+  const parsed = z.object({
+    latitude: z.number().finite().min(-90).max(90),
+    longitude: z.number().finite().min(-180).max(180),
+    radiusKm: z.number().finite().min(1).max(500).default(50),
+  }).safeParse(req.body);
+  if (!parsed.success) throw new ApiError(400, '位置或距离范围无效');
+  const { latitude, longitude, radiusKm } = parsed.data;
+  const latitudeDelta = radiusKm / 111.2;
+  const longitudeDelta = Math.min(180, radiusKm / (111.2 * Math.max(0.01, Math.cos(latitude * Math.PI / 180))));
+  const result = await db.query<{ payload: Record<string, unknown>; owner_id: string }>(
+    `SELECT payload, owner_id FROM entries
+     WHERE kind = 'campsites' AND payload ? 'latitude' AND payload ? 'longitude'
+       AND (payload->>'latitude')::double precision BETWEEN $1 AND $2
+       AND ($5::boolean OR (payload->>'longitude')::double precision BETWEEN $3 AND $4)`,
+    [Math.max(-90, latitude - latitudeDelta), Math.min(90, latitude + latitudeDelta), longitude - longitudeDelta, longitude + longitudeDelta,
+      longitudeDelta >= 180 || longitude - longitudeDelta < -180 || longitude + longitudeDelta > 180],
+  );
+  const items = result.rows.flatMap((row) => {
+    const campsiteLatitude = row.payload.latitude;
+    const campsiteLongitude = row.payload.longitude;
+    if (typeof campsiteLatitude !== 'number' || typeof campsiteLongitude !== 'number') return [];
+    const distance = distanceKm(latitude, longitude, campsiteLatitude, campsiteLongitude);
+    return distance <= radiusKm ? [{ item: { ...row.payload, ownerId: row.owner_id }, distanceKm: distance }] : [];
+  }).sort((a, b) => a.distanceKm - b.distanceKm).slice(0, 200);
+  res.setHeader('Cache-Control', 'no-store').json({ items });
 });
 
 app.get('/api/:kind', async (req, res) => {
